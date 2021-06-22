@@ -16,6 +16,7 @@ class CustomLoss(keras.losses.Loss):
         self.batch_size = y_true.shape[0]
         self.cp_label = tf.reshape(tf.random.categorical([[1.0]*self.class_num], self.batch_size), [self.batch_size,1])                                  #shape = (batch_size,1)
         self.cp_label_onehot = tf.reshape(tf.one_hot(self.cp_label, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                    #shape = (batch_size, class_nums)
+        self.y_true_onehot = tf.reshape(tf.one_hot(y_true, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                        #shape = (batch_size, class_nums)
         self.predict_label = tf.reshape(tf.argmax(y_pred, axis=1),
                                         [self.batch_size, 1])                                                                                            #shape = (batch_size, 1)
 
@@ -42,7 +43,7 @@ class CustomLoss(keras.losses.Loss):
         cross_entropy = cp_label_onehot * tf.math.log(1-y_pred)                                 #shape = (batch_size, class_nums)
         cross_entropy = tf.reduce_sum(cross_entropy, axis=1)                                    #shape = (batch_size, 1)
 
-        weight = -(1 - py)                                                                      #shape = (1,batch_size)
+        weight = -(1 - py)                                                                      #shape = (1, batch_size)
         out = tf.matmul(tf.reshape(weight, [1, self.batch_size]),
                         tf.reshape(cross_entropy, [self.batch_size, 1]))                        #shape = (1,1)
         return tf.reshape(out, [1])                                                             #shape = (1, )
@@ -64,7 +65,8 @@ class CustomLoss(keras.losses.Loss):
                 if D is None:
                     D = tf.reshape(y_pred[i], [1, self.class_num])
                 else:
-                    D = tf.concat((D, y_pred[i]), axis=0)
+                    D = tf.concat((D, tf.reshape(y_pred[i], [1, self.class_num])),
+                                  axis=0)
 
         # calculate the PL                                                  D's shape = (n, class_num)
         if D is None:
@@ -77,3 +79,24 @@ class CustomLoss(keras.losses.Loss):
                             [D.shape[0], 1])                                # shape = (n, 1)
         index = tf.concat((index, D_label), axis=1)                         # shape = (n, 2)
         py = tf.gather_nd(D, index)                                         # shape = (1, n)
+        py = 1 - tf.math.square(py)                                         # shape = (1, n)
+        py = tf.reshape(py,[D.shape[0]])                                    # shape = (n)
+        weight = py[0]
+        for i in range(1, py.shape[0]):
+            weight = weight * py[i]                                         # shape = (1)
+
+        cross_entropy = self.y_true_onehot * tf.math.log(y_pred)            # shape = (batch_size, class_nums)
+        cross_entropy = tf.reduce_sum(cross_entropy, axis=1)                # shape = (batch_size, 1)
+
+        out = -weight * cross_entropy
+        out = tf.reduce_sum(out, axis=0)
+
+        return out
+
+
+
+
+
+
+
+
