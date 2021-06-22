@@ -12,7 +12,6 @@ class CustomLoss(keras.losses.Loss):
         self.class_num = class_num
         self.th = 1/self.class_num
         self.rd = random.random()
-        self.rd = 0
         self.param = param
 
     def call(self, y_true, y_pred):
@@ -22,7 +21,7 @@ class CustomLoss(keras.losses.Loss):
 
         self.cp_label = tf.reshape(tf.random.categorical([[1.0]*self.class_num], self.batch_size), [self.batch_size,1])                                  #shape = (batch_size,1)
         self.cp_label_onehot = tf.reshape(tf.one_hot(self.cp_label, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                    #shape = (batch_size, class_nums)
-        self.y_true_onehot = tf.reshape(tf.one_hot(y_true, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                        #shape = (batch_size, class_nums)
+        self.y_true_onehot = tf.reshape(tf.one_hot(y_true, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                             #shape = (batch_size, class_nums)
         self.predict_label = tf.reshape(tf.argmax(y_pred, axis=1),
                                         [self.batch_size, 1])                                                                                            #shape = (batch_size, 1)
 
@@ -79,7 +78,8 @@ class CustomLoss(keras.losses.Loss):
         py = 1 - tf.math.square(py)                                         # shape = (1, n)
         py = tf.reshape(py, [1,num])                                          # shape = (n)
         weight = tf.reduce_prod(py)
-
+        
+        # calculate the PL cross entropy 
         cross_entropy = self.y_true_onehot * tf.math.log(y_pred)             # shape = (batch_size, class_nums)
         cross_entropy = tf.reduce_sum(cross_entropy, axis=1)                # shape = (batch_size, 1)
 
