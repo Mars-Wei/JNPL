@@ -11,17 +11,17 @@ class CustomLoss(keras.losses.Loss):
         super().__init__(name=name)
         self.class_num = class_num
         self.th = 1/self.class_num
-        self.rd = random.random()
         self.param = param
 
     def call(self, y_true, y_pred):
 
         self.batch_size = tf.shape(y_true)[0]
         y_true = tf.reshape(y_true, [self.batch_size, 1])
+        y_true = tf.cast(y_true, dtype='int64')
 
-        self.cp_label = y_true +1
-        rd = tf.random.categorical([[1.0]*self.class_num-2], self.batch_size)
-        self.cp_label = (self.cp_label + tf.reshape(rd, [self.batch_size,1])) % (self.class_num-1)
+        self.cp_label = y_true + 1
+        rd = tf.random.categorical([[1.0]*(self.class_num-1)], self.batch_size)
+        self.cp_label = (self.cp_label + tf.reshape(rd, [self.batch_size, 1])) % (self.class_num)
         self.cp_label_onehot = tf.reshape(tf.one_hot(self.cp_label, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                    #shape = (batch_size, class_nums)
         self.y_true_onehot = tf.reshape(tf.one_hot(y_true, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                             #shape = (batch_size, class_nums)
         self.predict_label = tf.reshape(tf.argmax(y_pred, axis=1),
@@ -31,7 +31,7 @@ class CustomLoss(keras.losses.Loss):
         PL_score = self.PL(y_pred, self.predict_label)
         score = NL_score + self.param * PL_score
 
-        return score
+        return score/tf.cast(self.batch_size, dtype='float32')
 
     def NL(self, y_pred, cp_label):
         # build a index to gather the socre from the socre matrix
