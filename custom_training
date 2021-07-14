@@ -1,0 +1,111 @@
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from JNPL.model2 import get_my_EFFmodel
+from tensorflow import keras
+from JNPL.loss import CustomLoss
+import random
+'''
+basic parameter config
+'''
+img_width = 480
+img_height = 480
+def gen_cp_label(true,class_nums):
+    l = []
+    for i in range(true.shape[0]):
+        while True:
+            p = random.randint(0, class_nums-1)
+            if p != true[i]:
+                l.append(p)
+                break
+    l = tf.Variable(l, dtype='int64')
+    return l
+
+
+def train( save_dir, csv_dir, data_dir, best_path, epochs, batch_size, portion,log_dir,begin_epoch='no'):
+    """
+    call backs
+    """
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=3, verbose=1, mode='auto', baseline=None, restore_best_weights=True)
+    logger = keras.callbacks.CSVLogger(csv_dir, separator=',', append=False)
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(
+        filepath=save_dir,
+        verbose=1,
+        save_weights_only=True,
+        period=1)
+    # learning rate schedule
+    def decay(epoch):
+      if epoch < 3:
+        return 1e-4
+      elif epoch >= 3 and epoch < 7:
+        return 1e-5
+      else:
+        return 1e-6
+
+    '''
+    # load the data and define the save dir and callback function
+    '''
+
+    train_ds = tf.keras.preprocessing.image_dataset_from_directory(
+        data_dir,
+        validation_split=1 - portion,
+        subset="training",
+        seed=123,
+        image_size=(img_height, img_width),
+        batch_size=batch_size)
+    class_names = train_ds.class_names
+
+    val_ds = tf.keras.preprocessing.image_dataset_from_directory(
+            data_dir,
+            validation_split=1 - portion,
+            subset="validation",
+            seed=123,
+            image_size=(img_height, img_width),
+            batch_size=batch_size)
+
+    class_nums = len(train_ds.class_names)
+    print('the data has been loaded')
+
+    '''
+    load the EFF model and to create my own model
+    '''
+
+
+    model = get_my_EFFmodel(img_height, img_width, class_nums)
+    my_loss = CustomLoss(class_num=class_nums)
+
+
+    train_ds = train_ds.shuffle(200)
+    val_ds = val_ds
+
+    def grad(model, inputs, targets):
+        with tf.GradientTape() as tape:
+            pred = model(inputs)
+            loss_value = my_loss(pred, targets)
+        return loss_value, tape.gradient(loss_value, model.trainable_variables)
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+    for epoch in range(100):
+
+        # Training loop - using batches of 32
+        for x, y in train_ds:
+            # 优化模型
+            cp_label = gen_cp_label(y, class_nums)
+            ys = tf.concat((tf.cast(y, dtype='int64'), cp_label), axis=0)
+            loss_value, grads = grad(model, x, ys)
+            optimizer.apply_gradients(zip(grads, model.trainable_variables))
+            pred = model(x)
+            print(pred[1])
+            print(loss_value)
+"""            print('==========================================================================')
+            print(int(tf.argmax(pred, axis=-1)[0]))
+            print('-------------------------------------------------------------------------')
+            print(int(y[0]))
+            print('-------------------------------------------------------------------------')
+            print(int(cp_label[0]))
+            print('-------------------------------------------------------------------------')
+            print(float(loss_value))
+            print('-------------------------------------------------------------------------')"""
+
+
+
