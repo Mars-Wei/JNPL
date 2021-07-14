@@ -7,21 +7,24 @@ this py define the loss function that compute the NL and PL
 cp_label means the complementary label(random generated)
 """
 class CustomLoss(keras.losses.Loss):
-    def __init__(self, class_num, param=0.01, name="custom_loss"):
+    def __init__(self, class_num, param=0.0, name="custom_loss"):
         super().__init__(name=name)
         self.class_num = class_num
         self.th = 1/self.class_num
         self.param = param
+        self.l = [-100000000000000.]
+        for i in range(self.class_num-1):
+            self.l.append(100000000000000.)
 
-    def call(self, y_true, y_pred):
+    def call(self, y_pred, y_true2):
 
-        self.batch_size = tf.shape(y_true)[0]
+        self.batch_size = tf.shape(y_pred)[0]
+        self.cp_label = y_true2[self.batch_size:]
+        y_true = y_true2[:self.batch_size]
+
         y_true = tf.reshape(y_true, [self.batch_size, 1])
-        y_true = tf.cast(y_true, dtype='int64')
+        self.cp_label = tf.reshape(self.cp_label, [self.batch_size, 1])
 
-        self.cp_label = y_true + 1
-        rd = tf.random.categorical([[1.0]*(self.class_num-1)], self.batch_size)
-        self.cp_label = (self.cp_label + tf.reshape(rd, [self.batch_size, 1])) % (self.class_num)
         self.cp_label_onehot = tf.reshape(tf.one_hot(self.cp_label, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                    #shape = (batch_size, class_nums)
         self.y_true_onehot = tf.reshape(tf.one_hot(y_true, axis=1, depth=self.class_num), [self.batch_size, self.class_num])                             #shape = (batch_size, class_nums)
         self.predict_label = tf.reshape(tf.argmax(y_pred, axis=1),
@@ -30,8 +33,10 @@ class CustomLoss(keras.losses.Loss):
         NL_score = self.NL(y_pred, self.cp_label)
         PL_score = self.PL(y_pred, self.predict_label)
         score = NL_score + self.param * PL_score
+        #max = tf.constant([5],dtype='float32')
+        #out = tf.where(score < 5, x=score, y=)
 
-        return score/tf.cast(self.batch_size, dtype='float32')
+        return score
 
     def NL(self, y_pred, cp_label):
         # build a index to gather the socre from the socre matrix
@@ -47,13 +52,14 @@ class CustomLoss(keras.losses.Loss):
                                      [self.batch_size, self.class_num])
 
 
-        cross_entropy = cp_label_onehot * tf.math.log(1-y_pred)                                 #shape = (batch_size, class_nums)
+        cross_entropy = cp_label_onehot * tf.math.log(tf.clip_by_value(1-y_pred,1e-3,1.0))                                #shape = (batch_size, class_nums)
         cross_entropy = tf.reduce_sum(cross_entropy, axis=1)                                    #shape = (batch_size, 1)
 
         weight = -(1 - py)                                                                      #shape = (1, batch_size)
         out = tf.matmul(tf.reshape(weight, [1, self.batch_size]),
                         tf.reshape(cross_entropy, [self.batch_size, 1]))                        #shape = (1,1)
-        return tf.reshape(out, [1])                                                             #shape = (1, )
+        out = -tf.reduce_sum(cross_entropy,axis=-1)
+        return tf.reshape(out, [1]) / tf.cast(self.batch_size,dtype='float32')                                                            #shape = (1, )
 
     def PL(self, y_pred, pred_label):
         # select the predict score that satisfied the th
@@ -89,3 +95,11 @@ class CustomLoss(keras.losses.Loss):
         out = tf.reduce_sum(out, axis=0)
 
         return out
+
+
+
+
+
+
+
+
